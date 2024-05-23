@@ -10,29 +10,14 @@ import (
 	"forum/model"
 )
 
-// ID is the resolver for the id field.
-func (r *commentResolver) ID(ctx context.Context, obj *model.Comment) (uint, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
-}
-
-// PostID is the resolver for the postId field.
-func (r *commentResolver) PostID(ctx context.Context, obj *model.Comment) (uint, error) {
-	panic(fmt.Errorf("not implemented: PostID - postId"))
-}
-
-// ParentID is the resolver for the parentId field.
-func (r *commentResolver) ParentID(ctx context.Context, obj *model.Comment) (*uint, error) {
-	panic(fmt.Errorf("not implemented: ParentID - parentId"))
-}
-
-// Replies is the resolver for the replies field.
-func (r *commentResolver) Replies(ctx context.Context, obj *model.Comment) (*model.Comment, error) {
-	panic(fmt.Errorf("not implemented: Replies - replies"))
+// Reply is the resolver for the reply field.
+func (r *commentResolver) Reply(ctx context.Context, obj *model.Comment) ([]*model.Comment, error) {
+	panic(fmt.Errorf("not implemented: Reply - reply"))
 }
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
-	return r.db.CreatePost(title, content, commentsLocked)
+	return r.Db.CreatePost(title, content, commentsLocked)
 }
 
 // CreateComment is the resolver for the createComment field.
@@ -42,17 +27,17 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, paren
 
 // LockComments is the resolver for the lockComments field.
 func (r *mutationResolver) LockComments(ctx context.Context, postID uint) (*model.Post, error) {
-	panic(fmt.Errorf("not implemented: LockComments - lockComments"))
+	return r.Db.LockComments(postID)
 }
 
 // Posts is the resolver for the posts field.
 func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
-	return r.db.Posts()
+	return r.Db.Posts()
 }
 
 // Post is the resolver for the post field.
 func (r *queryResolver) Post(ctx context.Context, id uint) (*model.Post, error) {
-	panic(fmt.Errorf("not implemented: Post - post"))
+	return r.Db.Post(id)
 }
 
 // Comments is the resolver for the comments field.

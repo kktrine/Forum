@@ -1,6 +1,7 @@
 package main
 
 import (
+	"forum/data/memoryDB"
 	"forum/graph"
 	"log"
 	"net/http"
@@ -19,7 +20,7 @@ func main() {
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{
-		Resolvers: &graph.Resolver{},
+		Resolvers: &graph.Resolver{Db: memoryDB.NewData()},
 	}))
 
 	http.Handle("/", playground.Handler("GraphQL playground", "/query"))

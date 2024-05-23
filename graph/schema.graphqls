@@ -3,6 +3,8 @@ type Post {
   title: String!
   content: String!
   commentsLocked: Boolean!
+  hasComments: Boolean!
+  comments: [Comment!]
 }
 
 type Comment {
@@ -10,7 +12,7 @@ type Comment {
   postId: ID!
   parentId: ID
   content: String!
-  replies: Comment
+  reply: [Comment]
 }
 
 type CommentEdge {
@@ -36,7 +38,7 @@ type Mutation {
 
 
 type Query {
-  posts: [Post!]!
+  posts: [Post!]
   post(id: ID!): Post
   comments(id: ID, first: Int, after: String): CommentConnection!
 }
