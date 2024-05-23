@@ -14,13 +14,30 @@ type Comment {
   replies: [Comment!]
 }
 
-type Query {
-  posts: [Post!]!
-  post(id: ID!): Post
+type CommentEdge {
+  node: Comment!
+  cursor: String!
+}
+
+type CommentConnection {
+  comments: [CommentEdge!]
+  pageInfo: PageInfo!
+}
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
 }
 
 type Mutation {
   createPost(title: String!, content: String!, commentsLocked: Boolean): Post!
-  createComment(postID: ID!, parentID: ID, content: String!): Comment!
+  createComment(postID: ID!, parentID: ID, content: String!): CommentConnection!
   lockComments(postID: ID!): Post!
+}
+
+
+type Query {
+  posts: [Post!]!
+  post(id: ID!): Post
+  comments(id: ID, first: Int, after: String): CommentConnection!
 }
