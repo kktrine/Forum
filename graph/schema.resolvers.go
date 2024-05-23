@@ -25,9 +25,14 @@ func (r *commentResolver) ParentID(ctx context.Context, obj *model.Comment) (*ui
 	panic(fmt.Errorf("not implemented: ParentID - parentId"))
 }
 
+// Replies is the resolver for the replies field.
+func (r *commentResolver) Replies(ctx context.Context, obj *model.Comment) (*model.Comment, error) {
+	panic(fmt.Errorf("not implemented: Replies - replies"))
+}
+
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
-	panic(fmt.Errorf("not implemented: CreatePost - createPost"))
+	return r.db.CreatePost(title, content, commentsLocked)
 }
 
 // CreateComment is the resolver for the createComment field.
@@ -40,14 +45,9 @@ func (r *mutationResolver) LockComments(ctx context.Context, postID uint) (*mode
 	panic(fmt.Errorf("not implemented: LockComments - lockComments"))
 }
 
-// ID is the resolver for the id field.
-func (r *postResolver) ID(ctx context.Context, obj *model.Post) (uint, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
-}
-
 // Posts is the resolver for the posts field.
 func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
-	panic(fmt.Errorf("not implemented: Posts - posts"))
+	return r.db.Posts()
 }
 
 // Post is the resolver for the post field.
@@ -66,13 +66,9 @@ func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
-// Post returns PostResolver implementation.
-func (r *Resolver) Post() PostResolver { return &postResolver{r} }
-
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
 type commentResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
-type postResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
