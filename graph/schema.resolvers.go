@@ -6,14 +6,8 @@ package graph
 
 import (
 	"context"
-	"fmt"
 	"forum/model"
 )
-
-// Reply is the resolver for the reply field.
-func (r *commentResolver) Reply(ctx context.Context, obj *model.Comment) ([]*model.Comment, error) {
-	panic(fmt.Errorf("not implemented: Reply - reply"))
-}
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
@@ -42,11 +36,8 @@ func (r *queryResolver) Post(ctx context.Context, id uint) (*model.Post, error) 
 
 // Comments is the resolver for the comments field.
 func (r *queryResolver) Comments(ctx context.Context, id *uint, first *int, after *string) (*model.CommentConnection, error) {
-	panic(fmt.Errorf("not implemented: comments - comments"))
+	return r.Db.Comments(id, first, after)
 }
-
-// Comment returns CommentResolver implementation.
-func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
 
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
@@ -54,6 +45,5 @@ func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
-type commentResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

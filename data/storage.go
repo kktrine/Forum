@@ -9,4 +9,5 @@ type Storage interface {
 	Post(id uint) (*model.Post, error)
 	Posts() ([]*model.Post, error)
 	Comments(id *uint, first *int, after *string) (*model.CommentConnection, error)
+	//Reply(obj *model.Comment) ([]*model.Comment, error)
 }

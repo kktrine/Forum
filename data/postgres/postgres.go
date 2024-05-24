@@ -1,10 +1,13 @@
 package postgres
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"forum/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"strconv"
 )
 
 type Db struct {
@@ -74,6 +77,10 @@ func (d Db) CreateComment(postID uint, parentIDI *uint, _ *string, content strin
 		tx.Rollback()
 		return nil, errors.New("can't insert comment: " + err.Error())
 	}
+	if post.HasComments == false {
+		post.HasComments = true
+		tx.Save(&post)
+	}
 	if err := tx.Commit().Error; err != nil {
 		return nil, errors.New("can't commit transaction: " + err.Error())
 	}
@@ -114,6 +121,12 @@ func (d Db) Post(id uint) (*model.Post, error) {
 	if res.Error != nil {
 		return nil, errors.New("something went wrong: " + res.Error.Error())
 	}
+	for i, comment := range post.Comments {
+		found := d.db.Where("Post_ID = ? and Parent_id_i = ?", id, comment.ID).Find(&comment.Reply)
+		if found.RowsAffected > 0 {
+			post.Comments[i].Reply = comment.Reply
+		}
+	}
 	return &post, nil
 }
 
@@ -127,19 +140,55 @@ func (d Db) Posts() ([]*model.Post, error) {
 }
 
 func (d Db) Comments(id *uint, first *int, after *string) (*model.CommentConnection, error) {
-	//TODO implement me
-	panic("implement me")
+	query := d.db.Order("id ASC")
+	firstId := 10
+	if first != nil {
+		firstId = *first
+		query = query.Limit(firstId + 1)
+	}
+	afterId := 0
+	if after != nil {
+		decode, err := base64.StdEncoding.DecodeString(*after)
+		if err != nil {
+			return nil, err
+		}
+		afterId, err = strconv.Atoi(string(decode))
+		if err != nil {
+			return nil, err
+		}
+		query = query.Where("id > ?", afterId)
+	}
+	var comments []model.Comment
+	query.Find(&comments)
+	if len(comments) == 0 {
+		return nil, errors.New("not found")
+	}
+	var res model.CommentConnection
+	if len(comments) > firstId {
+		res.PageInfo.HasNextPage = true
+		comments = comments[:firstId]
+	} else {
+		res.PageInfo.HasNextPage = false
+	}
+	for i, comment := range comments {
+		res.Comments[i].Node = &comment
+		res.Comments[i].Cursor = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID)))
+	}
+	res.PageInfo.HasNextPage = len(comments) > firstId
+	res.PageInfo.EndCursor = &res.Comments[len(res.Comments)-1].Cursor
+	return &res, nil
 }
 
 func New(cfg string) *Db {
 	db, err := gorm.Open(postgres.Open(cfg), &gorm.Config{})
 	if err != nil {
-		panic("coudn't connect to database: " + err.Error())
+		panic("couldn't connect to database: " + err.Error())
 	}
 	err = db.AutoMigrate(&model.Post{}, &model.Comment{})
 	if err != nil {
 		panic("failed to migrate tables: " + err.Error())
 	}
+	db = db.Debug()
 	return &Db{db: db}
 }
 

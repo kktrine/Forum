@@ -13,7 +13,7 @@ type Comment {
   parentIdI: ID
   parentIdS: ID
   content: String!
-  reply: [Comment]
+  reply: Comment
 }
 
 type CommentEdge {
