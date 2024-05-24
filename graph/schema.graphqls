@@ -9,8 +9,9 @@ type Post {
 
 type Comment {
   id: ID!
-  postId: ID!
-  parentId: ID
+  postId: ID
+  parentIdI: ID
+  parentIdS: ID
   content: String!
   reply: [Comment]
 }
@@ -32,7 +33,7 @@ type PageInfo {
 
 type Mutation {
   createPost(title: String!, content: String!, commentsLocked: Boolean): Post!
-  createComment(postID: ID!, parentID: ID, content: String!): CommentConnection!
+  createComment(postID: ID!, parentIDI: ID, parentIDS: String, content: String!): Comment!
   lockComments(postID: ID!): Post!
 }
 

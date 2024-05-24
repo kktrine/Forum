@@ -1,7 +1,7 @@
 package main
 
 import (
-	"forum/data/memoryDB"
+	"forum/data/postgres"
 	"forum/graph"
 	"log"
 	"net/http"
@@ -18,9 +18,10 @@ func main() {
 	if port == "" {
 		port = defaultPort
 	}
-
+	db := "host=localhost user=postgres password=postgres dbname=forum port=5432 sslmode=disable"
+	storage := postgres.New(db)
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{
-		Resolvers: &graph.Resolver{Db: memoryDB.NewData()},
+		Resolvers: &graph.Resolver{Db: *storage},
 	}))
 
 	http.Handle("/", playground.Handler("GraphQL playground", "/query"))

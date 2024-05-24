@@ -1,8 +1,6 @@
 package graph
 
-import (
-	"forum/data/memoryDB"
-)
+import "forum/data"
 
 //go:generate go run github.com/99designs/gqlgen generate
 
@@ -11,5 +9,5 @@ import (
 // It serves as dependency injection for your app, add any dependencies you require here.
 
 type Resolver struct {
-	Db *memoryDB.Data
+	Db data.Storage
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"forum/model"
+	"strconv"
+	"strings"
 )
 
 type posts struct {
@@ -11,17 +13,18 @@ type posts struct {
 }
 
 type post struct {
-	content        string
-	title          string
-	commentsLocked bool
-	hasComments    bool
-	Comments       map[uint]comment
+	content          string
+	title            string
+	commentsLocked   bool
+	hasComments      bool
+	comments         map[string]comment
+	currentCommentId uint
 }
 
 type comment struct {
-	content   string
-	replies   map[uint]comment
-	currentId uint
+	content        string
+	currentReplyId uint
+	replies        map[string]comment
 }
 
 type Data struct {
@@ -35,7 +38,7 @@ func NewData() *Data {
 
 func (d *Data) CreatePost(title string, content string, commentsLocked *bool) (*model.Post, error) {
 	if len(title) > 255 || len(content) > 2000 || len(title) < 3 {
-		return nil, errors.New("wrong lenght of title or content")
+		return nil, errors.New("wrong length of title or content")
 	}
 	commentsLock := false
 	if commentsLocked != nil {
@@ -43,11 +46,12 @@ func (d *Data) CreatePost(title string, content string, commentsLocked *bool) (*
 	}
 	d.currentId++
 	d.posts.posts[d.currentId] = post{
-		content:        content,
-		title:          title,
-		commentsLocked: commentsLock,
-		hasComments:    false,
-		Comments:       nil,
+		content:          content,
+		title:            title,
+		commentsLocked:   commentsLock,
+		hasComments:      false,
+		comments:         nil,
+		currentCommentId: 0,
 	}
 
 	return &model.Post{
@@ -60,12 +64,31 @@ func (d *Data) CreatePost(title string, content string, commentsLocked *bool) (*
 
 }
 
-func (d *Data) CreateComment(postID uint, parentID *uint, content string) (*model.CommentConnection, error) {
+func (d *Data) CreateComment(postID uint, parentID *string, content string) (*model.Comment, error) {
 	postFound, ok := d.posts.posts[postID]
 	if !ok {
 		return nil, errors.New("post not exists")
 	}
-	commentFound, ok := postFound.Comments[parentID]
+	if len(content) < 3 {
+		return nil, errors.New("wrong length of content")
+	}
+	if parentID == nil {
+		postFound.currentCommentId++
+		postFound.comments[strconv.FormatUint(uint64(postFound.currentCommentId), 10)] = comment{
+			content:        content,
+			currentReplyId: 0,
+			replies:        nil,
+		}
+		d.posts.posts[postID] = postFound
+		return model.Comment{}, nil
+	}
+	num := len(*parentID) - strings.Count(*parentID, "_")
+	currId := (*parentID)[0:1]
+	currComment := postFound.comments[currId]
+	for currId != *parentID {
+
+	}
+
 }
 
 func (d *Data) LockComments(postID uint) (*model.Post, error) {
@@ -113,7 +136,7 @@ func (d *Data) Post(id uint) (*model.Post, error) {
 		HasComments:    postRes.hasComments,
 		CommentsLocked: postRes.commentsLocked,
 	}
-	for idComm, comment := range postRes.Comments {
+	for idComm, comment := range postRes.comments {
 		res.Comments = append(res.Comments, model.Comment{
 			ID:      idComm,
 			PostID:  id,

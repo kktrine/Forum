@@ -21,8 +21,8 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 }
 
 // CreateComment is the resolver for the createComment field.
-func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentID *uint, content string) (*model.CommentConnection, error) {
-	panic(fmt.Errorf("not implemented: CreateComment - createComment"))
+func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentIDI *uint, parentIDS *string, content string) (*model.Comment, error) {
+	return r.Db.CreateComment(postID, parentIDI, parentIDS, content)
 }
 
 // LockComments is the resolver for the lockComments field.
@@ -42,7 +42,7 @@ func (r *queryResolver) Post(ctx context.Context, id uint) (*model.Post, error) 
 
 // Comments is the resolver for the comments field.
 func (r *queryResolver) Comments(ctx context.Context, id *uint, first *int, after *string) (*model.CommentConnection, error) {
-	panic(fmt.Errorf("not implemented: Comments - comments"))
+	panic(fmt.Errorf("not implemented: comments - comments"))
 }
 
 // Comment returns CommentResolver implementation.
