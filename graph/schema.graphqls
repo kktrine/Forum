@@ -43,3 +43,7 @@ type Query {
   post(id: ID!): Post
   comments(id: ID, first: Int, after: String): CommentConnection!
 }
+
+type Subscription {
+  newComment(postID: ID!): Comment!
+}

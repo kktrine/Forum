@@ -7,7 +7,11 @@ package graph
 import (
 	"context"
 	"forum/model"
+	"sync"
 )
+
+var commentSubscribers = make(map[uint]chan *model.Comment)
+var mu sync.Mutex
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
@@ -16,7 +20,16 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 
 // CreateComment is the resolver for the createComment field.
 func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentIDI *uint, parentIDS *string, content string) (*model.Comment, error) {
-	return r.Db.CreateComment(postID, parentIDI, parentIDS, content)
+	res, err := r.Db.CreateComment(postID, parentIDI, parentIDS, content)
+	if err != nil {
+		return nil, err
+	}
+	mu.Lock()
+	for _, ch := range commentSubscribers {
+		ch <- res
+	}
+	mu.Unlock()
+	return res, nil
 }
 
 // LockComments is the resolver for the lockComments field.
@@ -39,11 +52,24 @@ func (r *queryResolver) Comments(ctx context.Context, id *uint, first *int, afte
 	return r.Db.Comments(id, first, after)
 }
 
+// NewComment is the resolver for the newComment field.
+func (r *subscriptionResolver) NewComment(ctx context.Context, postID uint) (<-chan *model.Comment, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	ch := make(chan *model.Comment, 1)
+	commentSubscribers[postID] = ch
+	return ch, nil
+}
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// Subscription returns SubscriptionResolver implementation.
+func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
+
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }
