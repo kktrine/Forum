@@ -140,43 +140,61 @@ func (d Db) Posts() ([]*model.Post, error) {
 }
 
 func (d Db) Comments(id *uint, first *int, after *string) (*model.CommentConnection, error) {
-	query := d.db.Order("id ASC")
-	firstId := 10
-	if first != nil {
-		firstId = *first
-		query = query.Limit(firstId + 1)
-	}
-	afterId := 0
-	if after != nil {
-		decode, err := base64.StdEncoding.DecodeString(*after)
-		if err != nil {
-			return nil, err
-		}
-		afterId, err = strconv.Atoi(string(decode))
-		if err != nil {
-			return nil, err
-		}
-		query = query.Where("id > ?", afterId)
-	}
 	var comments []model.Comment
-	query.Find(&comments)
-	if len(comments) == 0 {
-		return nil, errors.New("not found")
-	}
-	var res model.CommentConnection
-	if len(comments) > firstId {
-		res.PageInfo.HasNextPage = true
-		comments = comments[:firstId]
+	query := d.db.Order("id ASC").Model(&comments)
+	var ParentId uint
+	if id != nil {
+		ParentId = *id
+	} else if after != nil {
+		var firstComment model.Comment
+		decodedCursor, err := base64.StdEncoding.DecodeString(*after)
+		if err != nil {
+			return nil, errors.New("can't decode \"after\" field: " + err.Error())
+		}
+		firstIdUint64, err := strconv.ParseUint(string(decodedCursor), 10, 64)
+		if err != nil {
+			return nil, errors.New("can't parse cursor: " + err.Error())
+		}
+		firstId := uint(firstIdUint64)
+		err = d.db.Where("id = ?", firstId).First(&firstComment).Error
+		if err != nil {
+			return nil, errors.New("can't find comment: " + err.Error())
+		}
+		if firstComment.ParentIDI != nil {
+			ParentId = *firstComment.ParentIDI
+		} else {
+			ParentId = firstComment.ID
+		}
+		query = query.Where("id >= ?", firstComment.ID)
 	} else {
-		res.PageInfo.HasNextPage = false
+		return nil, errors.New("one of \"id\", \"after\" must be provided")
 	}
+	query = query.Where("parent_id_i = ?", ParentId)
+	if first != nil {
+		query = query.Limit(*first + 2)
+	} else {
+		query = query.Limit(12)
+	}
+	err := query.Find(&comments).Error
+	if err != nil {
+		return nil, errors.New("can't find comments: " + err.Error())
+	}
+	res := model.CommentConnection{}
+	res.PageInfo = &model.PageInfo{HasNextPage: false}
+	if len(comments) > *first+1 {
+		res.PageInfo.HasNextPage = true
+		comments = comments[0 : *first+1]
+	}
+	commentEdgeArr := make([]*model.CommentEdge, len(comments))
 	for i, comment := range comments {
-		res.Comments[i].Node = &comment
-		res.Comments[i].Cursor = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID)))
+		commentEdgeArr[i] = &model.CommentEdge{}
+		commentEdgeArr[i].Node = &comment
+		commentEdgeArr[i].Cursor = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID)))
 	}
-	res.PageInfo.HasNextPage = len(comments) > firstId
-	res.PageInfo.EndCursor = &res.Comments[len(res.Comments)-1].Cursor
+	res.Comments = commentEdgeArr
+	res.PageInfo.EndCursor = &commentEdgeArr[len(commentEdgeArr)-1].Cursor
 	return &res, nil
+
 }
 
 func New(cfg string) *Db {
