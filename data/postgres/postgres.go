@@ -117,22 +117,40 @@ func (d Db) Post(id uint) (*model.Post, error) {
 	if err := d.db.First(&post, id).Error; err != nil {
 		return nil, err
 	}
-	res := d.db.Where("Post_ID = ? and Parent_id_i is null", id).Find(&post.Comments)
-	if res.Error != nil {
-		return nil, errors.New("something went wrong: " + res.Error.Error())
+	//res := d.db.Where("Post_ID = ? and Parent_id_i is null", id).Find(&post.Comments)
+	//if res.Error != nil {
+	//	return nil, errors.New("something went wrong: " + res.Error.Error())
+	//}
+	//for i, comment := range post.Comments {
+	//	found := d.db.Where("Post_ID = ? and Parent_id_i = ?", id, comment.ID).Find(&comment.Reply)
+	//	if found.RowsAffected > 0 {
+	//		post.Comments[i].Reply = comment.Reply
+	//	}
+	//}
+	//return &post, nil
+	var comments []model.Comment
+	err := d.db.Raw(`
+		WITH RECURSIVE comment_tree AS (
+			SELECT id, content, post_id, NULL::bigint AS reply_to
+			FROM comments
+			WHERE post_id = $1 AND parent_id_i IS NULL
+			UNION ALL
+			SELECT c.id, c.content, c.post_id, c.parent_id_i
+			FROM comments c
+			JOIN comment_tree ct ON c.parent_id_i = ct.id
+		)
+		SELECT id, content, post_id, reply_to FROM comment_tree;
+	`, id).Scan(&comments).Error
+	if err != nil {
+		return nil, err
 	}
-	for i, comment := range post.Comments {
-		found := d.db.Where("Post_ID = ? and Parent_id_i = ?", id, comment.ID).Find(&comment.Reply)
-		if found.RowsAffected > 0 {
-			post.Comments[i].Reply = comment.Reply
-		}
-	}
+	post.Comments = comments
 	return &post, nil
 }
 
 func (d Db) Posts() ([]*model.Post, error) {
 	posts := make([]*model.Post, 0)
-	res := d.db.Order("id").Find(&posts)
+	res := d.db.Order("id").Preload("Comments").Find(&posts)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -177,7 +195,10 @@ func (d Db) Comments(id *uint, first *int, after *string) (*model.CommentConnect
 	}
 	err := query.Find(&comments).Error
 	if err != nil {
-		return nil, errors.New("can't find comments: " + err.Error())
+		return nil, err
+	}
+	if len(comments) == 0 {
+		return nil, errors.New("can't find comment")
 	}
 	res := model.CommentConnection{}
 	res.PageInfo = &model.PageInfo{HasNextPage: false}
@@ -216,4 +237,17 @@ func (d Db) Stop() error {
 		return errors.New("failed to get database error: " + err.Error())
 	}
 	return val.Close()
+}
+
+func (d Db) Reply(obj *model.Comment) (*model.Comment, error) {
+	var res *model.Comment
+	err := d.db.Where("parent_id_i = ?", obj.ID).Order("id ASC").First(&res).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return res, nil
 }

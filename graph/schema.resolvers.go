@@ -6,15 +6,16 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"forum/model"
-	"sync"
+	"forum/subscription"
 )
-
-var commentSubscribers = make(map[uint]chan *model.Comment)
-var mu sync.Mutex
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
+	if len(title) < 3 || len(content) < 5 {
+		return nil, errors.New("min length of title = 4, of content = 6")
+	}
 	return r.Db.CreatePost(title, content, commentsLocked)
 }
 
@@ -24,11 +25,14 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, paren
 	if err != nil {
 		return nil, err
 	}
-	mu.Lock()
-	for _, ch := range commentSubscribers {
-		ch <- res
+	subscription.Mu.Lock()
+	defer subscription.Mu.Unlock()
+
+	if subscribers, ok := subscription.СommentSubscribers[postID]; ok {
+		for _, ch := range subscribers {
+			ch <- res
+		}
 	}
-	mu.Unlock()
 	return res, nil
 }
 
@@ -54,10 +58,12 @@ func (r *queryResolver) Comments(ctx context.Context, id *uint, first *int, afte
 
 // NewComment is the resolver for the newComment field.
 func (r *subscriptionResolver) NewComment(ctx context.Context, postID uint) (<-chan *model.Comment, error) {
-	mu.Lock()
-	defer mu.Unlock()
+	subscription.Mu.Lock()
+	defer subscription.Mu.Unlock()
+
 	ch := make(chan *model.Comment, 1)
-	commentSubscribers[postID] = ch
+	subscription.СommentSubscribers[postID] = append(subscription.СommentSubscribers[postID], ch)
+
 	return ch, nil
 }
 
@@ -73,3 +79,16 @@ func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionRes
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//     it when you're done.
+//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+//func (r *commentResolver) Reply(ctx context.Context, obj *model.Comment) (*model.Comment, error) {
+//	return r.Db.Reply(obj)
+//}
+//func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
+//
+//type commentResolver struct{ *Resolver }
