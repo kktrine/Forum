@@ -117,35 +117,53 @@ func (d Db) Post(id uint) (*model.Post, error) {
 	if err := d.db.First(&post, id).Error; err != nil {
 		return nil, err
 	}
-	//res := d.db.Where("Post_ID = ? and Parent_id_i is null", id).Find(&post.Comments)
-	//if res.Error != nil {
-	//	return nil, errors.New("something went wrong: " + res.Error.Error())
-	//}
-	//for i, comment := range post.Comments {
-	//	found := d.db.Where("Post_ID = ? and Parent_id_i = ?", id, comment.ID).Find(&comment.Reply)
-	//	if found.RowsAffected > 0 {
-	//		post.Comments[i].Reply = comment.Reply
-	//	}
-	//}
-	//return &post, nil
-	var comments []model.Comment
-	err := d.db.Raw(`
-		WITH RECURSIVE comment_tree AS (
-			SELECT id, content, post_id, NULL::bigint AS reply_to
-			FROM comments
-			WHERE post_id = $1 AND parent_id_i IS NULL
-			UNION ALL
-			SELECT c.id, c.content, c.post_id, c.parent_id_i
-			FROM comments c
-			JOIN comment_tree ct ON c.parent_id_i = ct.id
-		)
-		SELECT id, content, post_id, reply_to FROM comment_tree;
-	`, id).Scan(&comments).Error
+	err := d.db.Where("Post_ID = ? and parent_id_i is null", id).Order("id ASC").Find(&post.Comments).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &post, nil
+		}
 		return nil, err
 	}
-	post.Comments = comments
+	comments := make([]map[uint]*model.Comment, 0)
+	firstLevel := make(map[uint]*model.Comment, len(post.Comments))
+	for _, comment := range post.Comments {
+		firstLevel[comment.ID] = &comment
+	}
+	comments = append(comments, firstLevel)
+	for i := 0; ; i++ {
+		currentLevelIds := make([]uint, 0, len(comments[i]))
+		for _, comment := range comments[i] {
+			if comment.FirstReplyId != nil {
+				currentLevelIds = append(currentLevelIds, *comment.FirstReplyId)
+			}
+		}
+		if len(currentLevelIds) == 0 {
+			break
+		}
+		var currentLevelComments []model.Comment
+		err := d.db.Where("id in (?)", currentLevelIds).Find(&currentLevelComments).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return &post, nil
+			}
+			return nil, err
+		}
+		currentLevelMap := make(map[uint]*model.Comment, len(currentLevelComments))
+		for _, comment := range currentLevelComments {
+			currentLevelMap[comment.ID] = &comment
+		}
+		comments = append(comments, currentLevelMap)
+	}
+	for i := len(comments) - 1; i > 0; i-- {
+		for _, comment := range comments[i] {
+			comments[i-1][*comment.ParentIDI].Reply = comment
+		}
+	}
+	for i, comment := range post.Comments {
+		post.Comments[i].Reply = comments[0][comment.ID].Reply
+	}
 	return &post, nil
+
 }
 
 func (d Db) Posts() ([]*model.Post, error) {
