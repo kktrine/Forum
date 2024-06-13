@@ -7,7 +7,6 @@ import (
 	"forum/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"strconv"
 )
 
 type Db struct {
@@ -168,71 +167,140 @@ func (d Db) Post(id uint) (*model.Post, error) {
 
 func (d Db) Posts() ([]*model.Post, error) {
 	posts := make([]*model.Post, 0)
-	res := d.db.Order("id").Preload("Comments").Find(&posts)
+	res := d.db.First("id")
 	if res.Error != nil {
 		return nil, res.Error
 	}
 	return posts, nil
 }
 
+// Comments id != nil - получить ответы на коммент
+//
+// after != nil - получить следующую страницу комментов
 func (d Db) Comments(id *uint, first *int, after *string) (*model.CommentConnection, error) {
+	if id == nil {
+		return nil, errors.New("not impl")
+	}
+	if first == nil {
+		first = new(int)
+		*first = 10
+	}
 	var comments []model.Comment
-	query := d.db.Order("id ASC").Model(&comments)
-	var ParentId uint
-	if id != nil {
-		ParentId = *id
-	} else if after != nil {
-		var firstComment model.Comment
-		decodedCursor, err := base64.StdEncoding.DecodeString(*after)
-		if err != nil {
-			return nil, errors.New("can't decode \"after\" field: " + err.Error())
-		}
-		firstIdUint64, err := strconv.ParseUint(string(decodedCursor), 10, 64)
-		if err != nil {
-			return nil, errors.New("can't parse cursor: " + err.Error())
-		}
-		firstId := uint(firstIdUint64)
-		err = d.db.Where("id = ?", firstId).First(&firstComment).Error
-		if err != nil {
-			return nil, errors.New("can't find comment: " + err.Error())
-		}
-		if firstComment.ParentIDI != nil {
-			ParentId = *firstComment.ParentIDI
-		} else {
-			ParentId = firstComment.ID
-		}
-		query = query.Where("id >= ?", firstComment.ID)
-	} else {
-		return nil, errors.New("one of \"id\", \"after\" must be provided")
-	}
-	query = query.Where("parent_id_i = ?", ParentId)
-	if first != nil {
-		query = query.Limit(*first + 2)
-	} else {
-		query = query.Limit(12)
-	}
-	err := query.Find(&comments).Error
+	err := d.db.Where("parent_id_i = ?", id).Order("id ASC").Limit(*first + 1).Find(&comments).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	if len(comments) == 0 {
-		return nil, errors.New("can't find comment")
-	}
-	res := model.CommentConnection{}
-	res.PageInfo = &model.PageInfo{HasNextPage: false}
-	if len(comments) > *first+1 {
+	var res model.CommentConnection
+	res.PageInfo = &model.PageInfo{}
+	if len(comments) > *first {
 		res.PageInfo.HasNextPage = true
-		comments = comments[0 : *first+1]
+	} else {
+		res.PageInfo.HasNextPage = false
 	}
-	commentEdgeArr := make([]*model.CommentEdge, len(comments))
-	for i, comment := range comments {
-		commentEdgeArr[i] = &model.CommentEdge{}
-		commentEdgeArr[i].Node = &comment
-		commentEdgeArr[i].Cursor = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID)))
+	childComments := make([]map[uint]*model.CommentEdge, 0)
+	firstLevel := make(map[uint]*model.CommentEdge, len(comments))
+	for _, comment := range comments {
+		firstLevel[comment.ID] = &model.CommentEdge{
+			Node:   &comment,
+			Cursor: base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID))),
+		}
 	}
-	res.Comments = commentEdgeArr
-	res.PageInfo.EndCursor = &commentEdgeArr[len(commentEdgeArr)-1].Cursor
+	childComments = append(childComments, firstLevel)
+	for i := 0; ; i++ {
+		currentLevelIds := make([]uint, 0, len(childComments[i]))
+		for _, comment := range childComments[i] {
+			if comment.Node.FirstReplyId != nil {
+				currentLevelIds = append(currentLevelIds, *comment.Node.FirstReplyId)
+			}
+		}
+		if len(currentLevelIds) == 0 {
+			break
+		}
+		var currentLevelComments []model.Comment
+		err := d.db.Where("id in (?)", currentLevelIds).Find(&currentLevelComments).Error
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, err
+			}
+		}
+		currentLevelMap := make(map[uint]*model.CommentEdge, len(currentLevelComments))
+		for _, comment := range currentLevelComments {
+			currentLevelMap[comment.ID] = &model.CommentEdge{
+				Node:   &comment,
+				Cursor: base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID))),
+			}
+		}
+		childComments = append(childComments, currentLevelMap)
+	}
+	for i := len(childComments) - 1; i > 0; i-- {
+		for _, comment := range childComments[i] {
+			childComments[i-1][*comment.Node.ParentIDI].Node.Reply = comment.Node
+		}
+	}
+	for i, comment := range res.Comments {
+		res.Comments[i].Node.Reply = childComments[0][comment.Node.ID].Node.Reply
+	}
 	return &res, nil
+
+	//query := d.db.Order("id ASC").Model(&childComments)
+	//var ParentId uint
+	//if id != nil {
+	//	ParentId = *id
+	//} else if after != nil {
+	//	var firstComment model.Comment
+	//	decodedCursor, err := base64.StdEncoding.DecodeString(*after)
+	//	if err != nil {
+	//		return nil, errors.New("can't decode \"after\" field: " + err.Error())
+	//	}
+	//	firstIdUint64, err := strconv.ParseUint(string(decodedCursor), 10, 64)
+	//	if err != nil {
+	//		return nil, errors.New("can't parse cursor: " + err.Error())
+	//	}
+	//	firstId := uint(firstIdUint64)
+	//	err = d.db.Where("id = ?", firstId).First(&firstComment).Error
+	//	if err != nil {
+	//		return nil, errors.New("can't find comment: " + err.Error())
+	//	}
+	//	if firstComment.ParentIDI != nil {
+	//		ParentId = *firstComment.ParentIDI
+	//	} else {
+	//		ParentId = firstComment.ID
+	//	}
+	//	query = query.Where("id >= ?", firstComment.ID)
+	//} else {
+	//	return nil, errors.New("one of \"id\", \"after\" must be provided")
+	//}
+	//query = query.Where("parent_id_i = ?", ParentId)
+	//if first != nil {
+	//	query = query.Limit(*first + 2)
+	//} else {
+	//	query = query.Limit(12)
+	//}
+	//err := query.Find(&childComments).Error
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if len(childComments) == 0 {
+	//	return nil, errors.New("can't find comment")
+	//}
+	//res := model.CommentConnection{}
+	//res.PageInfo = &model.PageInfo{HasNextPage: false}
+	//if len(childComments) > *first+1 {
+	//	res.PageInfo.HasNextPage = true
+	//	childComments = childComments[0 : *first+1]
+	//}
+	//commentEdgeArr := make([]*model.CommentEdge, len(childComments))
+	//for i, comment := range childComments {
+	//	commentEdgeArr[i] = &model.CommentEdge{}
+	//	commentEdgeArr[i].Node = &comment
+	//	commentEdgeArr[i].Cursor = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID)))
+	//}
+	//res.Comments = commentEdgeArr
+	//res.PageInfo.EndCursor = &commentEdgeArr[len(commentEdgeArr)-1].Cursor
+	//return &res, nil
 
 }
 
