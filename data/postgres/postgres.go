@@ -215,15 +215,15 @@ func (d Db) Stop() error {
 	return val.Close()
 }
 
-func (d Db) Reply(obj *model.Comment) (*model.Comment, error) {
-	var res *model.Comment
-	err := d.db.Where("parent_id_i = ?", obj.ID).Order("id ASC").First(&res).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return res, nil
-}
+//func (d Db) Reply(obj *model.Comment) (*model.Comment, error) {
+//	var res *model.Comment
+//	err := d.db.Where("parent_id_i = ?", obj.ID).Order("id ASC").First(&res).Error
+//	if err != nil {
+//		if errors.Is(err, gorm.ErrRecordNotFound) {
+//			return nil, nil
+//		}
+//		return nil, err
+//	}
+//
+//	return res, nil
+//}

@@ -9,5 +9,4 @@ type Storage interface {
 	Post(id uint, limit *int) (*model.Post, error)
 	Posts() ([]*model.Post, error)
 	Comments(postID uint, first *int, after *int) (*model.CommentConnection, error)
-	Reply(obj *model.Comment) (*model.Comment, error)
 }

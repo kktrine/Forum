@@ -10,8 +10,7 @@ type Post {
 type Comment {
   id: ID!
   postId: ID
-  parentIdI: ID
-  parentIdS: ID
+  parentId: ID
   content: String!
   replies: [Comment!]
 }
