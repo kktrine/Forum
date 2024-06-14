@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"forum/model"
@@ -67,9 +66,8 @@ func (d Db) CreateComment(postID uint, parentIDI *uint, _ *string, content strin
 		return nil, errors.New("can't comment this post")
 	}
 	newComment := model.Comment{
-		PostID:    postID,
-		ParentIDI: parentIDI,
-		Content:   content,
+		PostID:  postID,
+		Content: content,
 	}
 	err := tx.Create(&newComment).Error
 	if err != nil {
@@ -111,196 +109,88 @@ func (d Db) LockComments(postID uint) (*model.Post, error) {
 	return &post, nil
 }
 
-func (d Db) Post(id uint) (*model.Post, error) {
+func (d Db) commentProcess(comments []model.Comment, limit int) []*model.Comment {
+	var res []*model.Comment
+	commentsMap := make(map[uint]*model.Comment)
+	for _, comment := range comments {
+		if comment.ParentID == nil {
+			if len(res) < limit {
+				res = append(res, &comment)
+			}
+		} else if value, ok := commentsMap[*comment.ParentID]; ok {
+			value.Replies = append(value.Replies, &comment)
+		}
+		commentsMap[comment.ID] = &comment
+	}
+	return res
+}
+
+func (d Db) Post(id uint, limit *int) (*model.Post, error) {
 	var post model.Post
 	if err := d.db.First(&post, id).Error; err != nil {
 		return nil, err
 	}
-	err := d.db.Where("Post_ID = ? and parent_id_i is null", id).Order("id ASC").Find(&post.Comments).Error
+	if limit == nil || *limit <= 0 {
+		limit = new(int)
+		*limit = 10
+	}
+	var comments []model.Comment
+	err := d.db.Where("post_id = ?", id).Order("id ASC").Find(&comments).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return &post, nil
 		}
 		return nil, err
 	}
-	comments := make([]map[uint]*model.Comment, 0)
-	firstLevel := make(map[uint]*model.Comment, len(post.Comments))
-	for _, comment := range post.Comments {
-		firstLevel[comment.ID] = &comment
-	}
-	comments = append(comments, firstLevel)
-	for i := 0; ; i++ {
-		currentLevelIds := make([]uint, 0, len(comments[i]))
-		for _, comment := range comments[i] {
-			if comment.FirstReplyId != nil {
-				currentLevelIds = append(currentLevelIds, *comment.FirstReplyId)
-			}
-		}
-		if len(currentLevelIds) == 0 {
-			break
-		}
-		var currentLevelComments []model.Comment
-		err := d.db.Where("id in (?)", currentLevelIds).Find(&currentLevelComments).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return &post, nil
-			}
-			return nil, err
-		}
-		currentLevelMap := make(map[uint]*model.Comment, len(currentLevelComments))
-		for _, comment := range currentLevelComments {
-			currentLevelMap[comment.ID] = &comment
-		}
-		comments = append(comments, currentLevelMap)
-	}
-	for i := len(comments) - 1; i > 0; i-- {
-		for _, comment := range comments[i] {
-			comments[i-1][*comment.ParentIDI].Reply = comment
-		}
-	}
-	for i, comment := range post.Comments {
-		post.Comments[i].Reply = comments[0][comment.ID].Reply
-	}
+	post.Comments = d.commentProcess(comments, *limit)
 	return &post, nil
 
 }
 
 func (d Db) Posts() ([]*model.Post, error) {
 	posts := make([]*model.Post, 0)
-	res := d.db.First("id")
+	res := d.db.Model(&model.Post{}).Order("id ASC").Find(&posts)
 	if res.Error != nil {
 		return nil, res.Error
 	}
 	return posts, nil
 }
 
-// Comments id != nil - получить ответы на коммент
-//
-// after != nil - получить следующую страницу комментов
-func (d Db) Comments(id *uint, first *int, after *string) (*model.CommentConnection, error) {
-	if id == nil {
-		return nil, errors.New("not impl")
-	}
-	if first == nil {
+func (d Db) Comments(postID uint, first *int, after *int) (*model.CommentConnection, error) {
+	if first == nil || *first <= 0 {
 		first = new(int)
 		*first = 10
 	}
+	if after == nil {
+		after = new(int)
+		*after = 0
+	} else if *after < 0 {
+		return nil, errors.New(fmt.Sprintf("comment with id %d not found", *after))
+	} else {
+		var checkComment model.Comment
+		err := d.db.Where("id = ?", *after).First(&checkComment).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, errors.New(fmt.Sprintf("comment with id %d not found", *after))
+			}
+			return nil, err
+		}
+	}
+
 	var comments []model.Comment
-	err := d.db.Where("parent_id_i = ?", id).Order("id ASC").Limit(*first + 1).Find(&comments).Error
+	err := d.db.Where("post_id = ? and id > ?", postID, *after).Order("id").Limit(*first + 1).Find(&comments).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	var res model.CommentConnection
-	res.PageInfo = &model.PageInfo{}
-	if len(comments) > *first {
-		res.PageInfo.HasNextPage = true
-	} else {
-		res.PageInfo.HasNextPage = false
-	}
-	childComments := make([]map[uint]*model.CommentEdge, 0)
-	firstLevel := make(map[uint]*model.CommentEdge, len(comments))
-	for _, comment := range comments {
-		firstLevel[comment.ID] = &model.CommentEdge{
-			Node:   &comment,
-			Cursor: base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID))),
-		}
-	}
-	childComments = append(childComments, firstLevel)
-	for i := 0; ; i++ {
-		currentLevelIds := make([]uint, 0, len(childComments[i]))
-		for _, comment := range childComments[i] {
-			if comment.Node.FirstReplyId != nil {
-				currentLevelIds = append(currentLevelIds, *comment.Node.FirstReplyId)
-			}
-		}
-		if len(currentLevelIds) == 0 {
-			break
-		}
-		var currentLevelComments []model.Comment
-		err := d.db.Where("id in (?)", currentLevelIds).Find(&currentLevelComments).Error
-		if err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, err
-			}
-		}
-		currentLevelMap := make(map[uint]*model.CommentEdge, len(currentLevelComments))
-		for _, comment := range currentLevelComments {
-			currentLevelMap[comment.ID] = &model.CommentEdge{
-				Node:   &comment,
-				Cursor: base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID))),
-			}
-		}
-		childComments = append(childComments, currentLevelMap)
-	}
-	for i := len(childComments) - 1; i > 0; i-- {
-		for _, comment := range childComments[i] {
-			childComments[i-1][*comment.Node.ParentIDI].Node.Reply = comment.Node
-		}
-	}
-	for i, comment := range res.Comments {
-		res.Comments[i].Node.Reply = childComments[0][comment.Node.ID].Node.Reply
-	}
-	return &res, nil
-
-	//query := d.db.Order("id ASC").Model(&childComments)
-	//var ParentId uint
-	//if id != nil {
-	//	ParentId = *id
-	//} else if after != nil {
-	//	var firstComment model.Comment
-	//	decodedCursor, err := base64.StdEncoding.DecodeString(*after)
-	//	if err != nil {
-	//		return nil, errors.New("can't decode \"after\" field: " + err.Error())
-	//	}
-	//	firstIdUint64, err := strconv.ParseUint(string(decodedCursor), 10, 64)
-	//	if err != nil {
-	//		return nil, errors.New("can't parse cursor: " + err.Error())
-	//	}
-	//	firstId := uint(firstIdUint64)
-	//	err = d.db.Where("id = ?", firstId).First(&firstComment).Error
-	//	if err != nil {
-	//		return nil, errors.New("can't find comment: " + err.Error())
-	//	}
-	//	if firstComment.ParentIDI != nil {
-	//		ParentId = *firstComment.ParentIDI
-	//	} else {
-	//		ParentId = firstComment.ID
-	//	}
-	//	query = query.Where("id >= ?", firstComment.ID)
-	//} else {
-	//	return nil, errors.New("one of \"id\", \"after\" must be provided")
-	//}
-	//query = query.Where("parent_id_i = ?", ParentId)
-	//if first != nil {
-	//	query = query.Limit(*first + 2)
-	//} else {
-	//	query = query.Limit(12)
-	//}
-	//err := query.Find(&childComments).Error
-	//if err != nil {
-	//	return nil, err
-	//}
-	//if len(childComments) == 0 {
-	//	return nil, errors.New("can't find comment")
-	//}
-	//res := model.CommentConnection{}
-	//res.PageInfo = &model.PageInfo{HasNextPage: false}
-	//if len(childComments) > *first+1 {
-	//	res.PageInfo.HasNextPage = true
-	//	childComments = childComments[0 : *first+1]
-	//}
-	//commentEdgeArr := make([]*model.CommentEdge, len(childComments))
-	//for i, comment := range childComments {
-	//	commentEdgeArr[i] = &model.CommentEdge{}
-	//	commentEdgeArr[i].Node = &comment
-	//	commentEdgeArr[i].Cursor = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", comment.ID)))
-	//}
-	//res.Comments = commentEdgeArr
-	//res.PageInfo.EndCursor = &commentEdgeArr[len(commentEdgeArr)-1].Cursor
-	//return &res, nil
+	return &model.CommentConnection{
+		Comments: d.commentProcess(comments, *first),
+		PageInfo: &model.PageInfo{
+			HasNextPage: len(comments) > *first,
+		},
+	}, nil
 
 }
 

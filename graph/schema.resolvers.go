@@ -7,9 +7,20 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"forum/model"
 	"forum/subscription"
 )
+
+// ParentIDI is the resolver for the parentIdI field.
+func (r *commentResolver) ParentIDI(ctx context.Context, obj *model.Comment) (*uint, error) {
+	panic(fmt.Errorf("not implemented: ParentIDI - parentIdI"))
+}
+
+// ParentIDS is the resolver for the parentIdS field.
+func (r *commentResolver) ParentIDS(ctx context.Context, obj *model.Comment) (*uint, error) {
+	panic(fmt.Errorf("not implemented: ParentIDS - parentIdS"))
+}
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
@@ -28,7 +39,7 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, paren
 	subscription.Mu.Lock()
 	defer subscription.Mu.Unlock()
 
-	if subscribers, ok := subscription.СommentSubscribers[postID]; ok {
+	if subscribers, ok := subscription.CommentSubscribers[postID]; ok {
 		for _, ch := range subscribers {
 			ch <- res
 		}
@@ -47,13 +58,13 @@ func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
 }
 
 // Post is the resolver for the post field.
-func (r *queryResolver) Post(ctx context.Context, id uint) (*model.Post, error) {
-	return r.Db.Post(id)
+func (r *queryResolver) Post(ctx context.Context, id uint, limit *int) (*model.Post, error) {
+	return r.Db.Post(id, limit)
 }
 
 // Comments is the resolver for the comments field.
-func (r *queryResolver) Comments(ctx context.Context, id *uint, first *int, after *string) (*model.CommentConnection, error) {
-	return r.Db.Comments(id, first, after)
+func (r *queryResolver) Comments(ctx context.Context, postID uint, first *int, after *int) (*model.CommentConnection, error) {
+	return r.Db.Comments(postID, first, after)
 }
 
 // NewComment is the resolver for the newComment field.
@@ -62,10 +73,13 @@ func (r *subscriptionResolver) NewComment(ctx context.Context, postID uint) (<-c
 	defer subscription.Mu.Unlock()
 
 	ch := make(chan *model.Comment, 1)
-	subscription.СommentSubscribers[postID] = append(subscription.СommentSubscribers[postID], ch)
+	subscription.CommentSubscribers[postID] = append(subscription.CommentSubscribers[postID], ch)
 
 	return ch, nil
 }
+
+// Comment returns CommentResolver implementation.
+func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
 
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
@@ -76,19 +90,7 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 // Subscription returns SubscriptionResolver implementation.
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
+type commentResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
-
-// !!! WARNING !!!
-// The code below was going to be deleted when updating resolvers. It has been copied here so you have
-// one last chance to move it out of harms way if you want. There are two reasons this happens:
-//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
-//     it when you're done.
-//   - You have helper methods in this file. Move them out to keep these resolver files clean.
-//func (r *commentResolver) Reply(ctx context.Context, obj *model.Comment) (*model.Comment, error) {
-//	return r.Db.Reply(obj)
-//}
-//func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
-//
-//type commentResolver struct{ *Resolver }

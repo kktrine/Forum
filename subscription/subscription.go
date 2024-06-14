@@ -6,6 +6,6 @@ import (
 )
 
 var (
-	СommentSubscribers = make(map[uint][]chan *model.Comment)
+	CommentSubscribers = make(map[uint][]chan *model.Comment)
 	Mu                 sync.Mutex
 )

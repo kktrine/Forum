@@ -13,16 +13,11 @@ type Comment {
   parentIdI: ID
   parentIdS: ID
   content: String!
-  reply: Comment
-}
-
-type CommentEdge {
-  node: Comment!
-  cursor: String!
+  replies: [Comment!]
 }
 
 type CommentConnection {
-  comments: [CommentEdge!]
+  comments: [Comment!]
   pageInfo: PageInfo!
 }
 
@@ -40,8 +35,8 @@ type Mutation {
 
 type Query {
   posts: [Post!]
-  post(id: ID!): Post
-  comments(id: ID, first: Int, after: String): CommentConnection!
+  post(id: ID!, limit: Int): Post
+  comments(postID: ID!, first: Int, after: Int): CommentConnection!
 }
 
 type Subscription {
