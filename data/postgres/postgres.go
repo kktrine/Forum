@@ -8,11 +8,11 @@ import (
 	"gorm.io/gorm"
 )
 
-type Db struct {
+type Postgres struct {
 	db *gorm.DB
 }
 
-func (d Db) CreatePost(title string, content string, commentsLocked *bool) (*model.Post, error) {
+func (d Postgres) CreatePost(title string, content string, commentsLocked *bool) (*model.Post, error) {
 	tx := d.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -41,7 +41,7 @@ func (d Db) CreatePost(title string, content string, commentsLocked *bool) (*mod
 	return newPost, nil
 }
 
-func (d Db) CreateComment(postID uint, parentIDI *uint, _ *string, content string) (*model.Comment, error) {
+func (d Postgres) CreateComment(postID uint, parentIDI *uint, content string) (*model.Comment, error) {
 	tx := d.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -84,7 +84,7 @@ func (d Db) CreateComment(postID uint, parentIDI *uint, _ *string, content strin
 	return &newComment, nil
 }
 
-func (d Db) LockComments(postID uint) (*model.Post, error) {
+func (d Postgres) LockComments(postID uint) (*model.Post, error) {
 	tx := d.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -109,7 +109,7 @@ func (d Db) LockComments(postID uint) (*model.Post, error) {
 	return &post, nil
 }
 
-func (d Db) commentProcess(comments []model.Comment, limit int) []*model.Comment {
+func (d Postgres) commentProcess(comments []model.Comment, limit int) []*model.Comment {
 	var res []*model.Comment
 	commentsMap := make(map[uint]*model.Comment)
 	for _, comment := range comments {
@@ -125,7 +125,7 @@ func (d Db) commentProcess(comments []model.Comment, limit int) []*model.Comment
 	return res
 }
 
-func (d Db) Post(id uint, limit *int) (*model.Post, error) {
+func (d Postgres) Post(id uint, limit *int) (*model.Post, error) {
 	var post model.Post
 	if err := d.db.First(&post, id).Error; err != nil {
 		return nil, err
@@ -147,7 +147,7 @@ func (d Db) Post(id uint, limit *int) (*model.Post, error) {
 
 }
 
-func (d Db) Posts() ([]*model.Post, error) {
+func (d Postgres) Posts() ([]*model.Post, error) {
 	posts := make([]*model.Post, 0)
 	res := d.db.Model(&model.Post{}).Order("id ASC").Find(&posts)
 	if res.Error != nil {
@@ -156,7 +156,7 @@ func (d Db) Posts() ([]*model.Post, error) {
 	return posts, nil
 }
 
-func (d Db) Comments(postID uint, first *int, after *int) (*model.CommentConnection, error) {
+func (d Postgres) Comments(postID uint, first *int, after *int) (*model.CommentConnection, error) {
 	if first == nil || *first <= 0 {
 		first = new(int)
 		*first = 10
@@ -194,7 +194,7 @@ func (d Db) Comments(postID uint, first *int, after *int) (*model.CommentConnect
 
 }
 
-func New(cfg string) *Db {
+func New(cfg string) *Postgres {
 	db, err := gorm.Open(postgres.Open(cfg), &gorm.Config{})
 	if err != nil {
 		panic("couldn't connect to database: " + err.Error())
@@ -204,26 +204,13 @@ func New(cfg string) *Db {
 		panic("failed to migrate tables: " + err.Error())
 	}
 	db = db.Debug()
-	return &Db{db: db}
+	return &Postgres{db: db}
 }
 
-func (d Db) Stop() error {
+func (d Postgres) Stop() error {
 	val, err := d.db.DB()
 	if err != nil {
 		return errors.New("failed to get database error: " + err.Error())
 	}
 	return val.Close()
 }
-
-//func (d Db) Reply(obj *model.Comment) (*model.Comment, error) {
-//	var res *model.Comment
-//	err := d.db.Where("parent_id_i = ?", obj.ID).Order("id ASC").First(&res).Error
-//	if err != nil {
-//		if errors.Is(err, gorm.ErrRecordNotFound) {
-//			return nil, nil
-//		}
-//		return nil, err
-//	}
-//
-//	return res, nil
-//}

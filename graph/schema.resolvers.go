@@ -7,20 +7,9 @@ package graph
 import (
 	"context"
 	"errors"
-	"fmt"
 	"forum/model"
 	"forum/subscription"
 )
-
-// ParentIDI is the resolver for the parentIdI field.
-func (r *commentResolver) ParentIDI(ctx context.Context, obj *model.Comment) (*uint, error) {
-	panic(fmt.Errorf("not implemented: ParentIDI - parentIdI"))
-}
-
-// ParentIDS is the resolver for the parentIdS field.
-func (r *commentResolver) ParentIDS(ctx context.Context, obj *model.Comment) (*uint, error) {
-	panic(fmt.Errorf("not implemented: ParentIDS - parentIdS"))
-}
 
 // CreatePost is the resolver for the createPost field.
 func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
@@ -31,8 +20,11 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 }
 
 // CreateComment is the resolver for the createComment field.
-func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentIDI *uint, parentIDS *string, content string) (*model.Comment, error) {
-	res, err := r.Db.CreateComment(postID, parentIDI, parentIDS, content)
+func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentID *uint, parentIDS *string, content string) (*model.Comment, error) {
+	if len(content) < 5 {
+		return nil, errors.New("min len = 5")
+	}
+	res, err := r.Db.CreateComment(postID, parentID, content)
 	if err != nil {
 		return nil, err
 	}
@@ -78,9 +70,6 @@ func (r *subscriptionResolver) NewComment(ctx context.Context, postID uint) (<-c
 	return ch, nil
 }
 
-// Comment returns CommentResolver implementation.
-func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
-
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
@@ -90,7 +79,6 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 // Subscription returns SubscriptionResolver implementation.
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
-type commentResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
