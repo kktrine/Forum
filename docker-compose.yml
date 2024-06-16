@@ -1,0 +1,32 @@
+
+version: '3.8'
+services:
+  forum-server:
+    build: ./
+    command: ./postgres.sh db ./forum --docker
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      - DB_PASSWORD=postgres
+      - DB_USER=postgres
+      - DB_TABLE=forum
+    networks:
+      - forum-network
+
+  db:
+    restart: always
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=forum
+    ports:
+      - "5434:5432"
+    networks:
+      - forum-network
+
+networks:
+  forum-network:
+    driver: bridge
