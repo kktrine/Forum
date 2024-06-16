@@ -27,7 +27,7 @@ type PageInfo {
 
 type Mutation {
   createPost(title: String!, content: String!, commentsLocked: Boolean): Post!
-  createComment(postID: ID!, parentID: ID, parentIDS: String, content: String!): Comment!
+  createComment(postID: ID!, parentID: ID, content: String!): Comment!
   lockComments(postID: ID!): Post!
 }
 

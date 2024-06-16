@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"forum/internal/data"
-	"forum/internal/data/memoryDB"
-	"forum/internal/data/postgres"
 	"forum/internal/graphQL"
+	"forum/internal/storage"
+	"forum/internal/storage/memoryDB"
+	"forum/internal/storage/postgres"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/gorilla/websocket"
 	"log"
@@ -43,18 +43,18 @@ func main() {
 		port = defaultPort
 	}
 
-	var storage data.Storage
+	var storageData storage.Storage
 	if *storageFlag == "sql" {
 		db := os.Getenv("POSTGRES")
-		storage = postgres.New(db)
+		storageData = postgres.New(db)
 	} else if *storageFlag == "mem" {
-		storage = memoryDB.New()
+		storageData = memoryDB.New()
 	} else {
 		panic("wrong value of -db flag")
 	}
 
 	srv := handler.NewDefaultServer(graphQL.NewExecutableSchema(graphQL.Config{
-		Resolvers: &graphQL.Resolver{Db: storage},
+		Resolvers: &graphQL.Resolver{Db: storageData},
 	}))
 	srv.AddTransport(&transport.Websocket{
 		Upgrader: websocket.Upgrader{
@@ -87,9 +87,9 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err = storage.Stop()
+	err = storageData.Stop()
 	if err != nil {
-		log.Printf("Error stopping storage: %v", err)
+		log.Printf("Error stopping storageData: %v", err)
 	}
 
 	if err := server.Shutdown(ctx); err != nil {

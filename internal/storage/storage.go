@@ -1,4 +1,4 @@
-package data
+package storage
 
 import (
 	model2 "forum/internal/model"

@@ -67,7 +67,7 @@ func (d Postgres) CreatePost(title string, content string, commentsLocked *bool)
 	}
 	if err := tx.Create(&newPost).Error; err != nil {
 		tx.Rollback()
-		return nil, errors.New("can't insert data: " + err.Error())
+		return nil, errors.New("can't insert storage: " + err.Error())
 	}
 	if err := tx.Commit().Error; err != nil {
 		return nil, errors.New("can't commit transaction: " + err.Error())

@@ -1,7 +1,7 @@
 package graphQL
 
 import (
-	"forum/internal/data"
+	"forum/internal/storage"
 )
 
 //go:generate go run github.com/99designs/gqlgen generate
@@ -11,5 +11,5 @@ import (
 // It serves as dependency injection for your app, add any dependencies you require here.
 
 type Resolver struct {
-	Db data.Storage
+	Db storage.Storage
 }
