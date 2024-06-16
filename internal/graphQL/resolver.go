@@ -1,6 +1,8 @@
-package graph
+package graphQL
 
-import "forum/data"
+import (
+	"forum/internal/data"
+)
 
 //go:generate go run github.com/99designs/gqlgen generate
 

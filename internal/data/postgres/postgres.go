@@ -6,6 +6,7 @@ import (
 	model2 "forum/internal/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"strconv"
 )
 
@@ -209,7 +210,9 @@ func (d Postgres) Comments(postID uint, first *int, after *string) (*model2.Comm
 }
 
 func New(cfg string) *Postgres {
-	db, err := gorm.Open(postgres.Open(cfg), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		panic("couldn't connect to database: " + err.Error())
 	}
@@ -217,7 +220,6 @@ func New(cfg string) *Postgres {
 	if err != nil {
 		panic("failed to migrate tables: " + err.Error())
 	}
-	db = db.Debug()
 	return &Postgres{db: db}
 }
 

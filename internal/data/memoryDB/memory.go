@@ -2,17 +2,21 @@ package memoryDB
 
 import (
 	"errors"
-	model2 "forum/internal/model"
+	"forum/internal/model"
 	"strconv"
 	"sync"
 )
 
 type MemoryDB struct {
-	posts            map[uint]model2.Post
-	comments         map[uint]*model2.Comment
+	posts            map[uint]model.Post
+	comments         map[uint]*model.Comment
 	currentPostId    uint
 	currentCommentId uint
 	mu               sync.RWMutex
+}
+
+func (m *MemoryDB) Stop() error {
+	return nil
 }
 
 func (m *MemoryDB) CheckPost(postId uint) bool {
@@ -21,15 +25,15 @@ func (m *MemoryDB) CheckPost(postId uint) bool {
 }
 
 func New() *MemoryDB {
-	return &MemoryDB{currentPostId: 1, currentCommentId: 1, posts: make(map[uint]model2.Post), comments: make(map[uint]*model2.Comment)}
+	return &MemoryDB{currentPostId: 1, currentCommentId: 1, posts: make(map[uint]model.Post), comments: make(map[uint]*model.Comment)}
 }
 
-func (m *MemoryDB) CreatePost(title string, content string, commentsLocked *bool) (*model2.Post, error) {
+func (m *MemoryDB) CreatePost(title string, content string, commentsLocked *bool) (*model.Post, error) {
 	if commentsLocked == nil {
 		commentsLocked = new(bool)
 		*commentsLocked = false
 	}
-	post := model2.Post{Title: title, Content: content, CommentsLocked: *commentsLocked, HasComments: false}
+	post := model.Post{Title: title, Content: content, CommentsLocked: *commentsLocked, HasComments: false}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	post.ID = m.currentPostId
@@ -42,7 +46,7 @@ func (m *MemoryDB) CreatePost(title string, content string, commentsLocked *bool
 	return nil, errors.New("can't add post")
 }
 
-func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*model2.Comment, error) {
+func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*model.Comment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	post, ok := m.posts[postID]
@@ -52,7 +56,7 @@ func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*
 	if post.CommentsLocked {
 		return nil, errors.New("comments locked")
 	}
-	comment := model2.Comment{
+	comment := model.Comment{
 		ID:       m.currentCommentId,
 		PostID:   postID,
 		ParentID: parentID,
@@ -75,7 +79,7 @@ func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*
 	return &comment, nil
 }
 
-func (m *MemoryDB) LockComments(postID uint) (*model2.Post, error) {
+func (m *MemoryDB) LockComments(postID uint) (*model.Post, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	post, ok := m.posts[postID]
@@ -87,7 +91,7 @@ func (m *MemoryDB) LockComments(postID uint) (*model2.Post, error) {
 	return &post, nil
 }
 
-func (m *MemoryDB) Post(id uint, limit *int) (*model2.Post, error) {
+func (m *MemoryDB) Post(id uint, limit *int) (*model.Post, error) {
 	if limit == nil {
 		limit = new(int)
 		*limit = 10
@@ -104,13 +108,13 @@ func (m *MemoryDB) Post(id uint, limit *int) (*model2.Post, error) {
 	return &post, nil
 }
 
-func (m *MemoryDB) Posts() ([]*model2.Post, error) {
+func (m *MemoryDB) Posts() ([]*model.Post, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if len(m.posts) == 0 {
 		return nil, nil
 	}
-	var res []*model2.Post
+	var res []*model.Post
 	for i := uint(1); i < m.currentPostId; i++ {
 		post, ok := m.posts[i]
 		if ok {
@@ -120,7 +124,7 @@ func (m *MemoryDB) Posts() ([]*model2.Post, error) {
 	return res, nil
 }
 
-func (m *MemoryDB) Comments(postID uint, first *int, after *string) (*model2.CommentConnection, error) {
+func (m *MemoryDB) Comments(postID uint, first *int, after *string) (*model.CommentConnection, error) {
 	post, ok := m.posts[postID]
 	if len(post.Comments) == 0 {
 		return nil, nil
@@ -132,7 +136,7 @@ func (m *MemoryDB) Comments(postID uint, first *int, after *string) (*model2.Com
 		first = new(int)
 		*first = 10
 	}
-	res := model2.CommentConnection{PageInfo: &model2.PageInfo{}}
+	res := model.CommentConnection{PageInfo: &model.PageInfo{}}
 	cursor := new(string)
 	if after == nil {
 		if len(post.Comments) <= *first {

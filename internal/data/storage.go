@@ -12,4 +12,5 @@ type Storage interface {
 	Posts() ([]*model2.Post, error)
 	Comments(postID uint, first *int, after *string) (*model2.CommentConnection, error)
 	CheckPost(postId uint) bool
+	Stop() error
 }
