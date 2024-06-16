@@ -14,6 +14,28 @@ type Postgres struct {
 	db *gorm.DB
 }
 
+func New(cfg string) *Postgres {
+	db, err := gorm.Open(postgres.Open(cfg), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		panic("couldn't connect to database: " + err.Error())
+	}
+	err = db.AutoMigrate(&model2.Post{}, &model2.Comment{})
+	if err != nil {
+		panic("failed to migrate tables: " + err.Error())
+	}
+	return &Postgres{db: db}
+}
+
+func (d Postgres) Stop() error {
+	val, err := d.db.DB()
+	if err != nil {
+		return errors.New("failed to get database error: " + err.Error())
+	}
+	return val.Close()
+}
+
 func (d Postgres) CheckPost(postId uint) bool {
 	var count int64
 	err := d.db.Model(&model2.Post{}).Where("id = ?", postId).Count(&count).Error
@@ -207,26 +229,4 @@ func (d Postgres) Comments(postID uint, first *int, after *string) (*model2.Comm
 	}
 	return res, err
 
-}
-
-func New(cfg string) *Postgres {
-	db, err := gorm.Open(postgres.Open(cfg), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	if err != nil {
-		panic("couldn't connect to database: " + err.Error())
-	}
-	err = db.AutoMigrate(&model2.Post{}, &model2.Comment{})
-	if err != nil {
-		panic("failed to migrate tables: " + err.Error())
-	}
-	return &Postgres{db: db}
-}
-
-func (d Postgres) Stop() error {
-	val, err := d.db.DB()
-	if err != nil {
-		return errors.New("failed to get database error: " + err.Error())
-	}
-	return val.Close()
 }
