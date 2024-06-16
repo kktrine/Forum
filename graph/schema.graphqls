@@ -35,7 +35,7 @@ type Mutation {
 type Query {
   posts: [Post!]
   post(id: ID!, limit: Int): Post
-  comments(postID: ID!, first: Int, after: Int): CommentConnection!
+  comments(postID: ID!, first: Int, afterCursor: String): CommentConnection!
 }
 
 type Subscription {

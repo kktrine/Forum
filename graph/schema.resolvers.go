@@ -7,12 +7,12 @@ package graph
 import (
 	"context"
 	"errors"
-	"forum/model"
-	"forum/subscription"
+	model2 "forum/internal/model"
+	"forum/internal/subscription"
 )
 
 // CreatePost is the resolver for the createPost field.
-func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model.Post, error) {
+func (r *mutationResolver) CreatePost(ctx context.Context, title string, content string, commentsLocked *bool) (*model2.Post, error) {
 	if len(title) < 3 || len(content) < 5 {
 		return nil, errors.New("min length of title = 4, of content = 6")
 	}
@@ -20,9 +20,12 @@ func (r *mutationResolver) CreatePost(ctx context.Context, title string, content
 }
 
 // CreateComment is the resolver for the createComment field.
-func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentID *uint, parentIDS *string, content string) (*model.Comment, error) {
+func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, parentID *uint, parentIDS *string, content string) (*model2.Comment, error) {
 	if len(content) < 5 {
 		return nil, errors.New("min len = 5")
+	}
+	if len(content) > 2000 {
+		return nil, errors.New("max len of comment = 2000")
 	}
 	res, err := r.Db.CreateComment(postID, parentID, content)
 	if err != nil {
@@ -40,31 +43,31 @@ func (r *mutationResolver) CreateComment(ctx context.Context, postID uint, paren
 }
 
 // LockComments is the resolver for the lockComments field.
-func (r *mutationResolver) LockComments(ctx context.Context, postID uint) (*model.Post, error) {
+func (r *mutationResolver) LockComments(ctx context.Context, postID uint) (*model2.Post, error) {
 	return r.Db.LockComments(postID)
 }
 
 // Posts is the resolver for the posts field.
-func (r *queryResolver) Posts(ctx context.Context) ([]*model.Post, error) {
+func (r *queryResolver) Posts(ctx context.Context) ([]*model2.Post, error) {
 	return r.Db.Posts()
 }
 
 // Post is the resolver for the post field.
-func (r *queryResolver) Post(ctx context.Context, id uint, limit *int) (*model.Post, error) {
+func (r *queryResolver) Post(ctx context.Context, id uint, limit *int) (*model2.Post, error) {
 	return r.Db.Post(id, limit)
 }
 
 // Comments is the resolver for the comments field.
-func (r *queryResolver) Comments(ctx context.Context, postID uint, first *int, after *int) (*model.CommentConnection, error) {
-	return r.Db.Comments(postID, first, after)
+func (r *queryResolver) Comments(ctx context.Context, postID uint, first *int, afterCursor *string) (*model2.CommentConnection, error) {
+	return r.Db.Comments(postID, first, afterCursor)
 }
 
 // NewComment is the resolver for the newComment field.
-func (r *subscriptionResolver) NewComment(ctx context.Context, postID uint) (<-chan *model.Comment, error) {
+func (r *subscriptionResolver) NewComment(ctx context.Context, postID uint) (<-chan *model2.Comment, error) {
 	subscription.Mu.Lock()
 	defer subscription.Mu.Unlock()
 
-	ch := make(chan *model.Comment, 1)
+	ch := make(chan *model2.Comment, 1)
 	subscription.CommentSubscribers[postID] = append(subscription.CommentSubscribers[postID], ch)
 
 	return ch, nil

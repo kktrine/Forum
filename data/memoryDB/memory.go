@@ -2,33 +2,39 @@ package memoryDB
 
 import (
 	"errors"
-	"forum/model"
+	model2 "forum/internal/model"
+	"strconv"
 	"sync"
 )
 
 type MemoryDB struct {
-	posts            map[uint]model.Post
-	comments         map[uint]*model.Comment
+	posts            map[uint]model2.Post
+	comments         map[uint]*model2.Comment
 	currentPostId    uint
 	currentCommentId uint
 	mu               sync.RWMutex
 }
 
-func New() *MemoryDB {
-	return &MemoryDB{currentPostId: 1, currentCommentId: 1, posts: make(map[uint]model.Post), comments: make(map[uint]*model.Comment)}
+func (m *MemoryDB) CheckPost(postId uint) bool {
+	_, ok := m.posts[postId]
+	return ok
 }
 
-func (m *MemoryDB) CreatePost(title string, content string, commentsLocked *bool) (*model.Post, error) {
+func New() *MemoryDB {
+	return &MemoryDB{currentPostId: 1, currentCommentId: 1, posts: make(map[uint]model2.Post), comments: make(map[uint]*model2.Comment)}
+}
+
+func (m *MemoryDB) CreatePost(title string, content string, commentsLocked *bool) (*model2.Post, error) {
 	if commentsLocked == nil {
 		commentsLocked = new(bool)
 		*commentsLocked = false
 	}
-	post := model.Post{Title: title, Content: content, CommentsLocked: *commentsLocked, HasComments: false}
+	post := model2.Post{Title: title, Content: content, CommentsLocked: *commentsLocked, HasComments: false}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	post.ID = m.currentPostId
 	m.posts[m.currentPostId] = post
-	_, ok := m.posts[m.currentCommentId]
+	_, ok := m.posts[m.currentPostId]
 	if ok {
 		m.currentPostId++
 		return &post, nil
@@ -36,7 +42,7 @@ func (m *MemoryDB) CreatePost(title string, content string, commentsLocked *bool
 	return nil, errors.New("can't add post")
 }
 
-func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*model.Comment, error) {
+func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*model2.Comment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	post, ok := m.posts[postID]
@@ -46,7 +52,7 @@ func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*
 	if post.CommentsLocked {
 		return nil, errors.New("comments locked")
 	}
-	comment := model.Comment{
+	comment := model2.Comment{
 		ID:       m.currentCommentId,
 		PostID:   postID,
 		ParentID: parentID,
@@ -69,7 +75,7 @@ func (m *MemoryDB) CreateComment(postID uint, parentID *uint, content string) (*
 	return &comment, nil
 }
 
-func (m *MemoryDB) LockComments(postID uint) (*model.Post, error) {
+func (m *MemoryDB) LockComments(postID uint) (*model2.Post, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	post, ok := m.posts[postID]
@@ -81,7 +87,7 @@ func (m *MemoryDB) LockComments(postID uint) (*model.Post, error) {
 	return &post, nil
 }
 
-func (m *MemoryDB) Post(id uint, limit *int) (*model.Post, error) {
+func (m *MemoryDB) Post(id uint, limit *int) (*model2.Post, error) {
 	if limit == nil {
 		limit = new(int)
 		*limit = 10
@@ -98,13 +104,13 @@ func (m *MemoryDB) Post(id uint, limit *int) (*model.Post, error) {
 	return &post, nil
 }
 
-func (m *MemoryDB) Posts() ([]*model.Post, error) {
+func (m *MemoryDB) Posts() ([]*model2.Post, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if len(m.posts) == 0 {
 		return nil, nil
 	}
-	var res []*model.Post
+	var res []*model2.Post
 	for i := uint(1); i < m.currentPostId; i++ {
 		post, ok := m.posts[i]
 		if ok {
@@ -114,7 +120,49 @@ func (m *MemoryDB) Posts() ([]*model.Post, error) {
 	return res, nil
 }
 
-func (m *MemoryDB) Comments(postID uint, first *int, after *int) (*model.CommentConnection, error) {
-	//TODO implement me
-	panic("implement me")
+func (m *MemoryDB) Comments(postID uint, first *int, after *string) (*model2.CommentConnection, error) {
+	post, ok := m.posts[postID]
+	if len(post.Comments) == 0 {
+		return nil, nil
+	}
+	if !ok {
+		return nil, errors.New("post not found")
+	}
+	if first == nil {
+		first = new(int)
+		*first = 10
+	}
+	res := model2.CommentConnection{PageInfo: &model2.PageInfo{}}
+	cursor := new(string)
+	if after == nil {
+		if len(post.Comments) <= *first {
+			res.Comments = post.Comments
+			res.PageInfo.HasNextPage = false
+		} else {
+			res.Comments = post.Comments[0:*first]
+			res.PageInfo.HasNextPage = true
+			*cursor = strconv.Itoa(*first)
+		}
+
+	} else {
+		afterInt, err := strconv.Atoi(*after)
+		if err != nil || afterInt < 0 || afterInt >= len(post.Comments) {
+			return nil, errors.New("invalid cursor")
+		}
+		if len(post.Comments) <= afterInt+*first {
+			res.Comments = post.Comments[afterInt:]
+			res.PageInfo.HasNextPage = false
+		} else {
+			res.Comments = post.Comments[afterInt : afterInt+*first]
+			res.PageInfo.HasNextPage = true
+			*cursor = strconv.Itoa(afterInt + *first)
+		}
+
+	}
+	if *cursor == "" {
+		cursor = nil
+	}
+	res.PageInfo.EndCursor = cursor
+	return &res, nil
+
 }

@@ -1,7 +1,7 @@
 package subscription
 
 import (
-	"forum/model"
+	"forum/internal/model"
 	"sync"
 )
 

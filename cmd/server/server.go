@@ -25,7 +25,7 @@ func main() {
 		port = defaultPort
 	}
 	db := "host=localhost user=postgres password=postgres dbname=forum port=5432 sslmode=disable"
-	storageFlag := flag.String("db", "mem", "sql or mem")
+	storageFlag := flag.String("db", "sql", "sql or mem")
 	flag.Parse()
 	var storage data.Storage
 	if *storageFlag == "sql" {

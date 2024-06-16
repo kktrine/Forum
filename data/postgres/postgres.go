@@ -3,16 +3,27 @@ package postgres
 import (
 	"errors"
 	"fmt"
-	"forum/model"
+	model2 "forum/internal/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"strconv"
 )
 
 type Postgres struct {
 	db *gorm.DB
 }
 
-func (d Postgres) CreatePost(title string, content string, commentsLocked *bool) (*model.Post, error) {
+func (d Postgres) CheckPost(postId uint) bool {
+	var count int64
+	err := d.db.Model(&model2.Post{}).Where("id = ?", postId).Count(&count).Error
+	if err != nil {
+		fmt.Println("Ошибка выполнения запроса:", err)
+		return false
+	}
+	return count > 0
+}
+
+func (d Postgres) CreatePost(title string, content string, commentsLocked *bool) (*model2.Post, error) {
 	tx := d.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -22,7 +33,7 @@ func (d Postgres) CreatePost(title string, content string, commentsLocked *bool)
 	if tx.Error != nil {
 		return nil, errors.New("can't start transaction; error: " + tx.Error.Error())
 	}
-	newPost := &model.Post{
+	newPost := &model2.Post{
 		Title:       title,
 		Content:     content,
 		HasComments: false,
@@ -41,7 +52,7 @@ func (d Postgres) CreatePost(title string, content string, commentsLocked *bool)
 	return newPost, nil
 }
 
-func (d Postgres) CreateComment(postID uint, parentIDI *uint, content string) (*model.Comment, error) {
+func (d Postgres) CreateComment(postID uint, parentIDI *uint, content string) (*model2.Comment, error) {
 	tx := d.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -51,12 +62,12 @@ func (d Postgres) CreateComment(postID uint, parentIDI *uint, content string) (*
 	if tx.Error != nil {
 		return nil, errors.New("can't start transaction; error: " + tx.Error.Error())
 	}
-	var post model.Post
+	var post model2.Post
 	if err := d.db.First(&post, postID).Error; err != nil {
 		return nil, errors.New("can't find post: " + err.Error())
 	}
 	if parentIDI != nil {
-		var comment model.Comment
+		var comment model2.Comment
 		err := d.db.First(&comment, parentIDI).Error
 		if err != nil {
 			return nil, errors.New("can't find comments: " + err.Error())
@@ -65,7 +76,7 @@ func (d Postgres) CreateComment(postID uint, parentIDI *uint, content string) (*
 	if post.CommentsLocked {
 		return nil, errors.New("can't comment this post")
 	}
-	newComment := model.Comment{
+	newComment := model2.Comment{
 		PostID:  postID,
 		Content: content,
 	}
@@ -84,7 +95,7 @@ func (d Postgres) CreateComment(postID uint, parentIDI *uint, content string) (*
 	return &newComment, nil
 }
 
-func (d Postgres) LockComments(postID uint) (*model.Post, error) {
+func (d Postgres) LockComments(postID uint) (*model2.Post, error) {
 	tx := d.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -94,7 +105,7 @@ func (d Postgres) LockComments(postID uint) (*model.Post, error) {
 	if tx.Error != nil {
 		return nil, errors.New("can't start transaction; error: " + tx.Error.Error())
 	}
-	var post model.Post
+	var post model2.Post
 	if err := d.db.First(&post, postID).Error; err != nil {
 		return nil, err
 	}
@@ -109,24 +120,27 @@ func (d Postgres) LockComments(postID uint) (*model.Post, error) {
 	return &post, nil
 }
 
-func (d Postgres) commentProcess(comments []model.Comment, limit int) []*model.Comment {
-	var res []*model.Comment
-	commentsMap := make(map[uint]*model.Comment)
+func (d Postgres) commentProcess(comments []model2.Comment, limit int) ([]*model2.Comment, bool) {
+	var res []*model2.Comment
+	hasNextPage := false
+	commentsMap := make(map[uint]*model2.Comment)
 	for _, comment := range comments {
 		if comment.ParentID == nil {
 			if len(res) < limit {
 				res = append(res, &comment)
+			} else {
+				hasNextPage = true
 			}
 		} else if value, ok := commentsMap[*comment.ParentID]; ok {
 			value.Replies = append(value.Replies, &comment)
 		}
 		commentsMap[comment.ID] = &comment
 	}
-	return res
+	return res, hasNextPage
 }
 
-func (d Postgres) Post(id uint, limit *int) (*model.Post, error) {
-	var post model.Post
+func (d Postgres) Post(id uint, limit *int) (*model2.Post, error) {
+	var post model2.Post
 	if err := d.db.First(&post, id).Error; err != nil {
 		return nil, err
 	}
@@ -134,7 +148,7 @@ func (d Postgres) Post(id uint, limit *int) (*model.Post, error) {
 		limit = new(int)
 		*limit = 10
 	}
-	var comments []model.Comment
+	var comments []model2.Comment
 	err := d.db.Where("post_id = ?", id).Order("id ASC").Find(&comments).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -142,55 +156,55 @@ func (d Postgres) Post(id uint, limit *int) (*model.Post, error) {
 		}
 		return nil, err
 	}
-	post.Comments = d.commentProcess(comments, *limit)
+	post.Comments, _ = d.commentProcess(comments, *limit)
 	return &post, nil
 
 }
 
-func (d Postgres) Posts() ([]*model.Post, error) {
-	posts := make([]*model.Post, 0)
-	res := d.db.Model(&model.Post{}).Order("id ASC").Find(&posts)
+func (d Postgres) Posts() ([]*model2.Post, error) {
+	posts := make([]*model2.Post, 0)
+	res := d.db.Model(&model2.Post{}).Order("id ASC").Find(&posts)
 	if res.Error != nil {
 		return nil, res.Error
 	}
 	return posts, nil
 }
 
-func (d Postgres) Comments(postID uint, first *int, after *int) (*model.CommentConnection, error) {
-	if first == nil || *first <= 0 {
+func (d Postgres) Comments(postID uint, first *int, after *string) (*model2.CommentConnection, error) {
+	if first == nil {
 		first = new(int)
 		*first = 10
+	} else if *first <= 0 {
+		return nil, errors.New("invalid first field")
 	}
-	if after == nil {
-		after = new(int)
-		*after = 0
-	} else if *after < 0 {
-		return nil, errors.New(fmt.Sprintf("comment with id %d not found", *after))
-	} else {
-		var checkComment model.Comment
-		err := d.db.Where("id = ?", *after).First(&checkComment).Error
+	if !d.CheckPost(postID) {
+		return nil, errors.New("post not found")
+	}
+	var afterUint uint = 0
+	if after != nil {
+		afterTmp, err := strconv.ParseUint(*after, 10, 64)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, errors.New(fmt.Sprintf("comment with id %d not found", *after))
-			}
 			return nil, err
 		}
+		afterUint = uint(afterTmp)
 	}
-
-	var comments []model.Comment
-	err := d.db.Where("post_id = ? and id > ?", postID, *after).Order("id").Limit(*first + 1).Find(&comments).Error
+	var comments []model2.Comment
+	err := d.db.Where("post_id = ? and id > ?", postID, afterUint).Order("id").Limit(*first + 1).Find(&comments).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &model.CommentConnection{
-		Comments: d.commentProcess(comments, *first),
-		PageInfo: &model.PageInfo{
-			HasNextPage: len(comments) > *first,
-		},
-	}, nil
+	res := &model2.CommentConnection{
+		PageInfo: &model2.PageInfo{},
+	}
+	res.Comments, res.PageInfo.HasNextPage = d.commentProcess(comments, *first)
+	if res.PageInfo.HasNextPage {
+		cursor := strconv.FormatUint(uint64(res.Comments[len(res.Comments)-1].ID), 10)
+		res.PageInfo.EndCursor = &cursor
+	}
+	return res, err
 
 }
 
@@ -199,7 +213,7 @@ func New(cfg string) *Postgres {
 	if err != nil {
 		panic("couldn't connect to database: " + err.Error())
 	}
-	err = db.AutoMigrate(&model.Post{}, &model.Comment{})
+	err = db.AutoMigrate(&model2.Post{}, &model2.Comment{})
 	if err != nil {
 		panic("failed to migrate tables: " + err.Error())
 	}
